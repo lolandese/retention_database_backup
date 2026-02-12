@@ -724,50 +724,67 @@ Future versions will support:
 - Legacy or complex restoration workflows
 - File/module/theme backups alongside database
 
-### Using Both Together (Recommended)
+## Complete Backup Strategy: Recommended Approach
 
-This is **not an either-or choice**. Many organizations use both:
+For **comprehensive site protection**, use these three components together:
 
-1. **Retention Database Backup** for:
-   - Frequent, lightweight **database-only snapshots**
-   - Developer-friendly **git-integrated backups** in `install/` folder
-   - Automated 4-tier retention without admin overhead
-   - Quick recovery from recent mistakes
+1. **Git** (GitHub/GitLab/Gitea)
+   - Protects all code, modules, themes, and configurations
+   - Maintains full version history and enables rollback
+   - No additional tool needed (standard development practice)
 
-2. **Backup & Migrate** for:
-   - Weekly/monthly **full site backups** (code + files + database)
-   - **Offsite storage** for disaster recovery (S3, SFTP)
-   - **Restoration UI** for less technical users
-   - Compliance/audit trail with comprehensive logging
+2. **Retention Database Backup**
+   - Intelligent database backups with 4-tier retention policy
+   - Git integration with commit hashes in filenames
+   - Lightweight, developer-friendly approach
+   - Quick recovery from accidental changes
 
-**Example Architecture:**
+3. **[Restic Backup](../restic_backup/)**
+   - Protects user uploads, private files, and runtime data
+   - Incremental backups with deduplication
+   - Multiple storage backends (S3, B2, Azure, SFTP, etc.)
+   - Automated restoration of specific files or entire snapshots
+
+**Complete Coverage:**
 ```
-Daily (Automated):        Retention Database Backup
-└─ Lightweight, 4-tier retention, git tracking
-
-Weekly (Scheduled):       Backup & Migrate
-└─ Full site backup to external storage (S3)
-
-Monthly (Archive):        Backup & Migrate
-└─ Long-term compliance copy
+Component         | Purpose              | What's Protected
+------------------|----------------------|----------------------------------
+Git               | Version control      | Code, modules, themes, configs
+Retention DB      | Database backups     | Database with 4-tier retention
+Restic Backup     | File protection      | User uploads, private files
 ```
 
-This combination provides:
-- Fast, frequent database recovery (Retention DB Backup)
-- Security against full site loss (Backup & Migrate to S3)
-- Developer-friendly git integration (Retention DB Backup)
-- Non-technical restoration capability (Backup & Migrate UI)
+Together, these three provide:
+- ✅ **Code protection**: Full history and rollback (Git)
+- ✅ **Database protection**: Frequent with smart retention (Retention DB Backup)
+- ✅ **File protection**: Incremental, cost-efficient (Restic Backup)
+- ✅ **Disaster recovery**: Complete coverage across all critical data
+
+**No Backup & Migrate needed** when using this combination.
+
+## Alternative: Using Backup & Migrate Instead
+
+For teams that prefer a single monolithic backup tool instead of the above approach, **Backup & Migrate** is an alternative option. However, it differs in philosophy:
 
 ### Key Differences in Philosophy
 
-| Aspect | Retention DB Backup | Backup & Migrate |
-|--------|-------------------|------------------|
-| **Focus** | Git-aware retention | Comprehensive site backup |
-| **Complexity** | Minimal & focused | Feature-rich |
+| Aspect | Retention DB + Restic + Git | Backup & Migrate |
+|--------|---------------------------|------------------|
+| **Architecture** | Modular, focused components | Monolithic, all-in-one |
+| **Code Protection** | Git (standard practice) | Backup & Migrate includes code |
+| **Database** | Intelligent retention tiers | Full backups or schedules |
+| **Files** | Incremental, deduped | Full site backups |
+| **Complexity** | Minimal & purpose-driven | Feature-rich but complex |
 | **Learning Curve** | Shallow | Moderate |
-| **Administrator** | Developers/DevOps | Site admins / backup specialists |
-| **Primary Use** | Development/QA | Production / high-compliance |
-| **Storage Strategy** | Retention tiers | Single location or external |
+| **Primary Use** | Development/Production | Production / high-compliance |
+| **Storage Cost** | Efficient (incremental) | Higher (full backups) |
+| **Administrator** | Developers/DevOps | Site admins / specialists |
+
+**When Backup & Migrate might be preferred:**
+- Single tool with unified admin UI
+- Non-technical user restoration capability
+- Organizations not using version control (not recommended)
+- Legacy approach to backup strategy
 
 ## Complementary Modules
 
