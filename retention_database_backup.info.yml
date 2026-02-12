@@ -1,0 +1,8 @@
+name: Retention Database Backup
+type: module
+description: Automated database backup with granular retention policy (2 days daily, 1 month, 6 months, 1 year). Sends monthly backups via email with support for external storage services (SFTP, S3, Webhooks). Optional integration with project install folder for distributed database snapshots.
+package: Development
+core_version_requirement: ^10 || ^11
+dependencies:
+  - drupal:system
+php: '8.1'

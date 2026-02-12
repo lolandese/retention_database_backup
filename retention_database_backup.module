@@ -1,0 +1,359 @@
+<?php
+
+/**
+ * @file
+ * Retention Database Backup module for Drupal.
+ *
+ * Provides automated database backup with tiered retention policy and email notifications.
+ */
+
+use Drupal\Core\Extension\Extension;
+
+/**
+ * Implements hook_mail().
+ *
+ * Format the backup notification email.
+ */
+function retention_database_backup_mail($key, &$message, $params) {
+  switch ($key) {
+    case 'backup_notification':
+      $message['subject'] = $params['subject'] ?? '';
+      $message['body'][] = $params['body'] ?? '';
+
+      // Set the from address with a proper display name
+      $site_name = \Drupal::config('system.site')->get('name');
+      $from_email = $params['from'] ?? \Drupal::config('system.site')->get('mail');
+      $message['from'] = $from_email;
+
+      // Set reply-to address - this is the Drupal way for reply-to
+      $message['reply-to'] = $from_email;
+
+      // Set headers for Symfony Mailer
+      if (!isset($message['headers'])) {
+        $message['headers'] = [];
+      }
+
+      $message['headers']['Content-Type'] = 'text/plain; charset=UTF-8';
+      break;
+  }
+}
+
+/**
+ * Implements hook_file_download().
+ *
+ * Control access to private backup files.
+ */
+function retention_database_backup_file_download($uri) {
+  // Only apply to files in the db-backups directory.
+  if (strpos($uri, 'private://db-backups/') === 0) {
+    // Only users with the 'administer retention database backup' permission can download.
+    if (!\Drupal::currentUser()->hasPermission('administer retention database backup')) {
+      return -1; // Deny access.
+    }
+
+    // Log the download for audit trail.
+    \Drupal::logger('retention_database_backup')->info(
+      'Backup downloaded by @user: @file',
+      ['@user' => \Drupal::currentUser()->getAccountName(), '@file' => basename($uri)]
+    );
+
+    // Allow download - Drupal will serve the file via PHP (not direct HTTP).
+    return ['type' => 'application/gzip'];
+  }
+}
+
+/**
+ * Implements hook_requirements().
+ *
+ * Check that Drush is installed and accessible.
+ */
+function retention_database_backup_requirements($phase) {
+  $requirements = [];
+
+  if ($phase === 'runtime') {
+    $drush_available = FALSE;
+    $drush_version = NULL;
+
+    // Try to find drush executable.
+    $output = [];
+    $return_code = 0;
+    @exec('which drush 2>/dev/null', $output, $return_code);
+
+    if ($return_code === 0 && !empty($output[0])) {
+      $drush_available = TRUE;
+
+      // Get drush version.
+      $output = [];
+      $return_code = 0;
+      @exec('drush --version 2>/dev/null', $output, $return_code);
+
+      if ($return_code === 0 && !empty($output[0])) {
+        $drush_version = $output[0];
+      }
+    }
+
+    $requirements['retention_database_backup_drush'] = [
+      'title' => t('Retention Database Backup: Drush'),
+      'value' => $drush_available ? ($drush_version ?: t('Drush found')) : t('Not found'),
+      'description' => $drush_available ? t('Drush is installed and accessible.') : t('Retention Database Backup requires Drush CLI to be installed and accessible in the system PATH.'),
+      'severity' => $drush_available ? REQUIREMENT_OK : REQUIREMENT_ERROR,
+    ];
+
+    // Check GPG if encryption is enabled.
+    $config = \Drupal::config('retention_database_backup.settings');
+    if ($config->get('enable_encryption')) {
+      $gpg_available = FALSE;
+      $output = [];
+      $return_code = 0;
+      @exec('which gpg 2>/dev/null', $output, $return_code);
+
+      if ($return_code === 0 && !empty($output[0])) {
+        $gpg_available = TRUE;
+      }
+
+      // Also check if recipient is configured.
+      $gpg_recipient = $config->get('gpg_recipient');
+      $recipient_configured = !empty($gpg_recipient);
+
+      $description = '';
+      $severity = REQUIREMENT_OK;
+      $value = '';
+
+      if ($gpg_available && $recipient_configured) {
+        $value = t('GPG configured');
+        $description = t('GPG is installed and encryption is enabled with recipient: @recipient', ['@recipient' => $gpg_recipient]);
+      }
+      elseif ($gpg_available && !$recipient_configured) {
+        $value = t('GPG found, but recipient not configured');
+        $description = t('GPG is installed but no recipient email is configured. Set GPG recipient email at /admin/config/system/retention-database-backup, or disable encryption.');
+        $severity = REQUIREMENT_WARNING;
+      }
+      elseif (!$gpg_available && $recipient_configured) {
+        $value = t('Not found');
+        $description = t('Encryption is enabled but GPG is not installed. Install gnupg with: ddev exec apk add gnupg (DDEV) or sudo apt-get install gnupg2 (production). Or disable encryption at /admin/config/system/retention-database-backup. See module README.md section "Installing GPG on the Server" for details.');
+        $severity = REQUIREMENT_ERROR;
+      }
+      else {
+        $value = t('Not found');
+        $description = t('Encryption is enabled but GPG is not installed and no recipient is configured. Install gnupg package or disable encryption. See /admin/config/system/retention-database-backup');
+        $severity = REQUIREMENT_ERROR;
+      }
+
+      $requirements['retention_database_backup_gpg'] = [
+        'title' => t('Retention Database Backup: GPG Encryption'),
+        'value' => $value,
+        'description' => $description,
+        'severity' => $severity,
+      ];
+    }
+
+    // Show backup status summary.
+    $backup_info = _retention_database_backup_get_summary();
+    $requirements['retention_database_backup_status'] = [
+      'title' => t('Retention Database Backup Status'),
+      'value' => t(
+        '@count backups (@size total, oldest: @oldest, latest: @latest)',
+        [
+          '@count' => $backup_info['count'],
+          '@size' => _retention_database_backup_format_bytes($backup_info['total_size']),
+          '@oldest' => $backup_info['oldest_time'],
+          '@latest' => $backup_info['latest_time'],
+        ]
+      ),
+      'description' => $backup_info['count'] > 0 ? t('Database backups are being created regularly.') : t('Warning: No backups found. Check if automatic backups are enabled.'),
+      'severity' => $backup_info['count'] > 0 ? REQUIREMENT_OK : REQUIREMENT_WARNING,
+    ];
+  }
+
+  return $requirements;
+}
+
+/**
+ * Get backup summary statistics.
+ *
+ * @return array
+ *   Array with 'count', 'total_size', and 'latest_time'.
+ */
+function _retention_database_backup_get_summary() {
+  $backup_dir = \Drupal::root() . '/../db-backups';
+
+  $count = 0;
+  $total_size = 0;
+  $latest_time = 0;
+  $oldest_time = 0;
+
+  if (is_dir($backup_dir)) {
+    $files = array_diff(scandir($backup_dir), ['.', '..']);
+    foreach ($files as $file) {
+      $path = $backup_dir . '/' . $file;
+      if (is_file($path) && strpos($file, '.sql.gz') !== FALSE) {
+        $count++;
+        $total_size += filesize($path);
+        $file_time = filemtime($path);
+        $latest_time = max($latest_time, $file_time);
+        if ($oldest_time === 0 || $file_time < $oldest_time) {
+          $oldest_time = $file_time;
+        }
+      }
+    }
+  }
+
+  return [
+    'count' => $count,
+    'total_size' => $total_size,
+    'oldest_time' => $oldest_time ? _retention_database_backup_format_time_ago($oldest_time) : t('Never'),
+    'latest_time' => $latest_time ? _retention_database_backup_format_time_ago($latest_time) : t('Never'),
+  ];
+}
+
+/**
+ * Format bytes into human-readable format.
+ *
+ * @param int $bytes
+ *   Number of bytes.
+ *
+ * @return string
+ *   Human-readable byte size (e.g., "1.5 MB").
+ */
+function _retention_database_backup_format_bytes($bytes) {
+  $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  $bytes = max($bytes, 0);
+  $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+  $pow = min($pow, count($units) - 1);
+  $bytes /= (1 << (10 * $pow));
+  return round($bytes, 2) . ' ' . $units[$pow];
+}
+
+/**
+ * Format time difference as "X units and Y units ago".
+ *
+ * @param int $timestamp
+ *   Unix timestamp of the event.
+ *
+ * @return string
+ *   Human-readable time ago string with 2 units (e.g., "1 week and 3 days ago").
+ */
+function _retention_database_backup_format_time_ago($timestamp) {
+  $now = time();
+  $diff = $now - $timestamp;
+
+  if ($diff < 0) {
+    return t('In the future');
+  }
+
+  // Define time units in descending order.
+  $units = [
+    'year' => 365 * 24 * 60 * 60,
+    'month' => 30 * 24 * 60 * 60,
+    'week' => 7 * 24 * 60 * 60,
+    'day' => 24 * 60 * 60,
+    'hour' => 60 * 60,
+    'minute' => 60,
+    'second' => 1,
+  ];
+
+  $parts = [];
+  foreach ($units as $unit => $seconds) {
+    if ($diff >= $seconds) {
+      $count = floor($diff / $seconds);
+      $diff %= $seconds;
+      $parts[$unit] = $count;
+      if (count($parts) >= 2) {
+        break;
+      }
+    }
+  }
+
+  if (empty($parts)) {
+    return t('Just now');
+  }
+
+  // Format the parts with pluralization.
+  $formatted_parts = [];
+  foreach ($parts as $unit => $count) {
+    $formatted_parts[] = $count . ' ' . ($count === 1 ? $unit : $unit . 's');
+  }
+
+  return implode(t(' and '), $formatted_parts) . t(' ago');
+}
+
+/**
+ * Implements hook_cron().
+ *
+ * Create a database backup and apply retention policy once per day.
+ */
+function retention_database_backup_cron() {
+  $config = \Drupal::config('retention_database_backup.settings');
+
+  // Check if automatic backups are enabled.
+  if (!$config->get('enable_automatic_backups')) {
+    \Drupal::logger('retention_database_backup')->info('Cron called but automatic backups disabled');
+    return;
+  }
+
+  // Get the last time this cron ran
+  $last_run = \Drupal::state()->get('retention_database_backup.last_cron_run', 0);
+  $current_time = \Drupal::time()->getRequestTime();
+  $time_diff = $current_time - $last_run;
+
+  // DEBUG: Log the time check details
+  \Drupal::logger('retention_database_backup')->debug('CRON TIME CHECK: last_run=' . $last_run . ', current=' . $current_time . ', diff=' . $time_diff . ' seconds, threshold=86400');
+
+  // Only run once per day (86400 seconds = 24 hours)
+  if ($time_diff < 86400) {
+    // Not enough time has passed since last run
+    \Drupal::logger('retention_database_backup')->debug('CRON SKIPPED: Time diff (' . $time_diff . ' seconds) is less than 86400 seconds threshold');
+    return;
+  }
+
+  \Drupal::logger('retention_database_backup')->debug('CRON PROCEEDING: Time threshold reached, creating backup');
+
+  try {
+    // Create a backup and apply retention policy atomically
+    $backup_manager = \Drupal::service('retention_database_backup.backup_manager');
+    \Drupal::logger('retention_database_backup')->debug('CRON BACKUP: Starting backup creation');
+    $result = $backup_manager->createBackupAndApplyRetention();
+    \Drupal::logger('retention_database_backup')->debug('CRON BACKUP: Backup creation completed');
+
+    $backup_file = $result['backup_file'];
+    $deleted_files = $result['deleted_files'];
+
+    if (!$backup_file) {
+      \Drupal::logger('retention_database_backup')->warning(t('Failed to create database backup.'));
+      return;
+    }
+
+    \Drupal::logger('retention_database_backup')->info(t('Database backup created: @file', ['@file' => $backup_file]));
+
+    if (!empty($deleted_files)) {
+      \Drupal::logger('retention_database_backup')->info(t('Retention policy applied. Deleted @count backup(s).', ['@count' => count($deleted_files)]));
+    }
+
+    // Check if we should send the backup via email (1-month tier).
+    $retention_policy = \Drupal::service('retention_database_backup.retention_policy');
+    if ($config->get('send_monthly_email') && $retention_policy->isMonthlyBackupFile($backup_file)) {
+      $backup_manager->sendBackupEmail($backup_file);
+      \Drupal::logger('retention_database_backup')->info(t('Monthly backup email sent for: @file', ['@file' => basename($backup_file)]));
+    }
+
+    // Sync latest backup to install folder if enabled.
+    if ($config->get('enable_install_folder_sync')) {
+      $backup_manager->syncToInstallFolder($backup_file);
+      \Drupal::logger('retention_database_backup')->info(t('Backup synced to install folder.'));
+    }
+
+    // Update the last successful run time so backup only happens once per day
+    \Drupal::state()->set('retention_database_backup.last_cron_run', $current_time);
+    \Drupal::logger('retention_database_backup')->debug('CRON STATE UPDATED: Set last_cron_run to ' . $current_time);
+  }
+  catch (\Exception $e) {
+    $message = t('Retention Database Backup cron error: @error', ['@error' => $e->getMessage()]);
+    \Drupal::logger('retention_database_backup')->error($message);
+
+    // Send error email if configured.
+    if ($config->get('send_monthly_email')) {
+      $backup_manager = \Drupal::service('retention_database_backup.backup_manager');
+      $backup_manager->sendErrorEmail($message);
+    }
+  }
+}

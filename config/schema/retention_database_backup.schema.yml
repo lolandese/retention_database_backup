@@ -1,0 +1,25 @@
+retention_database_backup.settings:
+  type: config_object
+  label: 'Retention Database Backup Settings'
+  mapping:
+    enable_automatic_backups:
+      type: boolean
+      label: 'Enable Automatic Backups'
+    email_recipients:
+      type: string
+      label: 'Email Recipients'
+    email_from_address:
+      type: email
+      label: 'From Email Address'
+    enable_encryption:
+      type: boolean
+      label: 'Enable Encryption'
+    gpg_recipient:
+      type: string
+      label: 'GPG Recipient'
+    enable_install_folder_sync:
+      type: boolean
+      label: 'Enable Install Folder Sync'
+    install_folder_path:
+      type: string
+      label: 'Install Folder Path'

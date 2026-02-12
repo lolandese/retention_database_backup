@@ -1,0 +1,6 @@
+retention_database_backup.settings:
+  title: 'Retention Database Backup Settings'
+  description: 'Configure database backup retention policy, email notifications, and GPG encryption.'
+  route_name: retention_database_backup.settings
+  parent: system.admin_config_system
+  weight: 10

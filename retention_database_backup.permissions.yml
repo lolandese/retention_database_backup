@@ -1,0 +1,3 @@
+'administer retention database backup':
+  title: 'Administer Retention Database Backup'
+  description: 'Access the backup dashboard, download backups, and manage backup settings.'

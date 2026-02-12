@@ -1,0 +1,11 @@
+retention_database_backup.dashboard:
+  route_name: retention_database_backup.dashboard
+  title: 'Dashboard'
+  base_route: retention_database_backup.dashboard
+  weight: -1
+
+retention_database_backup.settings:
+  route_name: retention_database_backup.settings
+  title: 'Settings'
+  base_route: retention_database_backup.dashboard
+  weight: 0

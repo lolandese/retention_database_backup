@@ -1,0 +1,12 @@
+# Default configuration for Retention Database Backup module
+
+enable_automatic_backups: true
+send_monthly_email: false
+email_recipients: ''
+email_from_address: ''
+max_email_attachment_size: 25000
+external_service_type: 'none'
+enable_install_folder_sync: false
+install_folder_path: 'install'
+enable_encryption: false
+gpg_recipient: ''

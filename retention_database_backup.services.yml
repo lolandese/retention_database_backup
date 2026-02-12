@@ -1,0 +1,17 @@
+services:
+  retention_database_backup.backup_manager:
+    class: Drupal\retention_database_backup\BackupManager
+    arguments:
+      - '@plugin.manager.mail'
+      - '@logger.channel.retention_database_backup'
+      - '@config.factory'
+      - '@file_system'
+
+  retention_database_backup.retention_policy:
+    class: Drupal\retention_database_backup\RetentionPolicy
+    arguments:
+      - '@logger.channel.retention_database_backup'
+
+  logger.channel.retention_database_backup:
+    parent: logger.channel_base
+    arguments: ['retention_database_backup']

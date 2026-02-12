@@ -1,0 +1,31 @@
+retention_database_backup.dashboard:
+  path: '/admin/config/system/retention-database-backup'
+  defaults:
+    _form: '\Drupal\retention_database_backup\Form\DashboardForm'
+    _title: 'Retention Database Backup - Dashboard'
+  requirements:
+    _permission: 'administer retention database backup'
+
+retention_database_backup.download:
+  path: '/admin/config/system/retention-database-backup/download/{filename}'
+  defaults:
+    _controller: '\Drupal\retention_database_backup\Controller\BackupDownloadController::download'
+  requirements:
+    _permission: 'administer retention database backup'
+    filename: '.+'
+
+retention_database_backup.delete:
+  path: '/admin/config/system/retention-database-backup/delete/{filename}'
+  defaults:
+    _controller: '\Drupal\retention_database_backup\Controller\DeleteBackupController::delete'
+  requirements:
+    _permission: 'administer retention database backup'
+    filename: '.+'
+
+retention_database_backup.settings:
+  path: '/admin/config/system/retention-database-backup/settings'
+  defaults:
+    _form: '\Drupal\retention_database_backup\Form\SettingsForm'
+    _title: 'Retention Database Backup - Settings'
+  requirements:
+    _permission: 'administer retention database backup'
