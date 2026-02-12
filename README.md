@@ -369,13 +369,13 @@ ddev exec gpg --version
 For automated backups, create a key **without a passphrase** (automation can't interactively enter passphrases):
 
 ```bash
-# Generate key for martinuspostma@gmail.com (adjust email as needed)
+# Generate key for backup@example.com (adjust email as needed)
 ddev exec gpg --batch --gen-key << EOF
 %echo Generating GPG key...
 Key-Type: RSA
 Key-Length: 2048
 Name-Real: Drupal Backup
-Name-Email: martinuspostma@gmail.com
+Name-Email: backup@example.com
 Expire-Date: 2y
 %no-protection
 %commit
@@ -385,14 +385,14 @@ EOF
 
 Verify the key was created:
 ```bash
-ddev exec gpg --list-keys martinuspostma@gmail.com
+ddev exec gpg --list-keys backup@example.com
 ```
 
 **Expected output:**
 ```
 pub   rsa2048 2026-02-10 [SCEA] [expires: 2028-02-10]
      ABC123DEF456GHI789JKL012MNO345PQR678STU
-uid           [ultimate] Drupal Backup <martinuspostma@gmail.com>
+uid           [ultimate] Drupal Backup <backup@example.com>
 ```
 
 ### Configuring Drupal to Use GPG
@@ -400,7 +400,7 @@ uid           [ultimate] Drupal Backup <martinuspostma@gmail.com>
 1. Go to `/admin/config/system/retention-database-backup`
 2. Under "Encryption Settings":
    - ✓ Check "Enable GPG Encryption"
-   - Enter "GPG Recipient Email or Key ID": `martinuspostma@gmail.com` (or the key ID like `ABC123DEF...`)
+   - Enter "GPG Recipient Email or Key ID": `backup@example.com` (or the key ID like `ABC123DEF...`)
    - Click "Save configuration"
 
 3. Check system status at `/admin/reports/status`:
@@ -413,13 +413,13 @@ If you already have a GPG key on your local machine and want to use it in DDEV:
 
 ```bash
 # Export key from local machine
-gpg --export-secret-key martinuspostma@gmail.com > /tmp/my-key.gpg
+gpg --export-secret-key backup@example.com > /tmp/my-key.gpg
 
 # Import into DDEV container
 ddev exec gpg --import /tmp/my-key.gpg
 
 # Verify import
-ddev exec gpg --list-secret-keys martinuspostma@gmail.com
+ddev exec gpg --list-secret-keys backup@example.com
 ```
 
 ### Testing GPG Encryption
@@ -474,14 +474,14 @@ ddev import-db < database.sql.gz
    # Then: quit
    ```
 
-#### Error: "gpg: martinuspostma@gmail.com: skipped: No data"
+#### Error: "gpg: backup@example.com: skipped: No data"
 
 **Symptom**: GPG encryption fails, backup exported unencrypted with warning.
 
 **Cause**: The GPG key is not found or not trusted in the keyring.
 
 **Solution**:
-1. Check if key exists: `ddev exec gpg --list-keys | grep martinuspostma`
+1. Check if key exists: `ddev exec gpg --list-keys | grep backup`
 2. If missing, generate it (see "Generating a New GPG Key")
 3. If it exists, check `retention_database_backup.settings` config to ensure email matches exactly:
    ```bash
