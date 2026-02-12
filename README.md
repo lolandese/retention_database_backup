@@ -769,6 +769,36 @@ This combination provides:
 | **Primary Use** | Development/QA | Production / high-compliance |
 | **Storage Strategy** | Retention tiers | Single location or external |
 
+## Complementary Modules
+
+This module works best as part of a complete backup strategy:
+
+- **[Restic Backup](../restic_backup/)** - Comprehensive file and full-system backup with multiple storage backends (S3, B2, Azure, SFTP, etc.). Use this for complete file system backups and multi-destination cloud storage consolidation.
+
+**Recommended Architecture:**
+1. Use **Retention Database Backup** for database backups with intelligent retention policies (daily, weekly, monthly, yearly tiers)
+2. Use **Restic Backup** for complete file system backups and backup consolidation to remote storage
+3. Both modules work independently but complement each other for comprehensive protection
+
+**Example Multi-Module Strategy:**
+```
+Daily (Automated):        Retention Database Backup
+└─ Lightweight, 4-tier retention, git tracking
+
+Daily (Automated):        Restic Backup (files)
+└─ Incremental file backups to S3/B2
+
+Weekly (Full Backup):     Backup & Migrate
+└─ Complete site backup to offsite location
+```
+
+This combination provides:
+- **Database protection**: Frequent, intelligent retention (Retention DB Backup)
+- **File protection**: Incremental, cost-effective (Restic Backup)
+- **Full site protection**: Complete backups for disaster recovery (Backup & Migrate)
+- **Git integration**: Code tracking with commit hashes (Retention DB Backup)
+- **Cloud redundancy**: Multiple storage methods (Restic Backup to S3/B2, Backup & Migrate to SFTP)
+
 ## Troubleshooting
 
 ### Backups Not Created
