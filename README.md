@@ -1,11 +1,5 @@
 # Retention Database Backup
 
-> **⚠️ Status: Pre-Release (Development Version)**
-> 
-> This module is in active development. While functional and safe for testing in development environments, it is **NOT recommended for production use** until the first stable (1.0) release. The stable release will include security audits and official support commitments.
-> 
-> For production use, please **star the repository on GitHub** to be notified when a stable release becomes available.
-
 A Drupal module that provides automated database backups with a sophisticated 4-tier retention policy. Designed for flexible backup management with optional email notifications and external storage support.
 
 ## Features
