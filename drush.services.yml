@@ -1,0 +1,5 @@
+services:
+  retention_database_backup.commands:
+    class: Drupal\retention_database_backup\Drush\DatabaseBackupCommands
+    tags:
+      - { name: 'drush.command' }
